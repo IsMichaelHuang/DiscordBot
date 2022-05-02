@@ -1,144 +1,102 @@
-import random
-import time
+# main.py
+
+import os
 import discord
 from discord.ext import commands
+from dotenv import load_dotenv
+from music_cog import Music
 
+from bot_commands import (
+    handle_ping, handle_clear, handle_kick, handle_ban, handle_unban,
+    handle_disconnect, handle_move, handle_addrole, handle_removerole,
+    handle_shutdown
+)
 
-def main():
-    bot = commands.Bot(command_prefix='$')
+from event_handlers import (
+    on_ready_handler,
+    on_command_error_handler
+)
 
-    # Creating Decorators
-    @bot.event
-    async def on_ready():
-        await bot.change_presence(status=discord.Status.invisible)
-        print("The Bot is ready.")
+# Load .env file for DISCORD_TOKEN
+load_dotenv()
+TOKEN = os.getenv("DISCORD_TOKEN")
 
-    @bot.event
-    async def on_command_error(ctx, error):
-        if isinstance(error, commands.CommandNotFound):
-            await ctx.send("Not a command in here.")
+# Set up intents
+intents = discord.Intents.default()
+intents.members = True
+intents.message_content = True  # Required for command processing in latest versions
 
-    @bot.command()
-    async def ping(ctx):
-        await ctx.send(f'Ping! {round(bot.latency * 1000)}ms')
+# Create bot instance
+bot = commands.Bot(command_prefix='$', intents=intents)
 
-    # Clear messages
-    @bot.command()
-    @commands.check_any(commands.is_owner(), commands.has_role("Bot Boi"))
-    async def clear(ctx, amount=5):
-        await ctx.channel.purge(limit=amount)
+# --- Register Events ---
 
-    # Kick members
-    @bot.command()
-    @commands.check_any(commands.is_owner(), commands.has_role("Bot Boi"))
-    async def kick(ctx, member: discord.Member, *, reason=None):
-        if str(member.id) == "193219019292016641":
-            print(member, " tried to ban you")
-            return
+@bot.event
+async def on_ready():
+    await on_ready_handler(bot)
 
-        await ctx.channel.purge(limit=1)
+@bot.event
+async def on_command_error(ctx, error):
+    await on_command_error_handler(ctx, error)
 
-        print("Kick member: ", member, "\n")
+# --- Register Commands ---
 
-        await member.kick(reason=reason)
+@bot.command()
+async def ping(ctx):
+    await handle_ping(ctx, bot)
 
-    # Ban member
-    @ bot.command()
-    @ commands.check_any(commands.is_owner(), commands.has_role("Bot Boi"))
-    async def ban(ctx, member: discord.Member, *, reason=None):
-        if str(member.id) == "193219019292016641":
-            print(member, " tried to Kick you")
-            return
+@bot.command()
+@commands.check_any(commands.is_owner(), commands.has_role("Bot Boi"))
+async def clear(ctx, amount: int = 5):
+    await handle_clear(ctx, amount)
 
-        await ctx.channel.purge(limit=1)
+@bot.command()
+@commands.check_any(commands.is_owner(), commands.has_role("Bot Boi"))
+async def kick(ctx, member: discord.Member, *, reason=None):
+    await handle_kick(ctx, member, reason)
 
-        print(f"Ban member: {member}")
+@bot.command()
+@commands.check_any(commands.is_owner(), commands.has_role("Bot Boi"))
+async def ban(ctx, member: discord.Member, *, reason=None):
+    await handle_ban(ctx, member, reason)
 
-        await member.ban(reason=reason)
+@bot.command()
+@commands.check_any(commands.is_owner(), commands.has_role("Bot Boi"))
+async def unban(ctx, *, member):
+    await handle_unban(ctx, member)
 
-    # UnBan member
-    @bot.command()
-    @commands.check_any(commands.is_owner(), commands.has_role("Bot Boi"))
-    async def unban(ctx, *, member):
-        await ctx.channel.purge(limit=1)
+@bot.command(name="disconnect", aliases=["dc"])
+@commands.check_any(commands.is_owner(), commands.has_role("Bot Boi"))
+async def disconnect(ctx, value: int = 10, *members: discord.Member):
+    await handle_disconnect(ctx, value, members)
 
-        banned_users = await ctx.guild.bans()
-        member_name, member_discriminator = member.split('#')
+@bot.command()
+@commands.is_owner()
+async def move(ctx, member: discord.Member, channel1: discord.VoiceChannel, channel2: discord.VoiceChannel, value: int=10):
+    await handle_move(ctx, member, channel1, channel2, value)
 
-        for ban_entry in banned_users:
-            user = ban_entry.user
+@bot.command()
+@commands.check_any(commands.is_owner(), commands.has_role("Bot Boi"))
+async def addrole(ctx, role: discord.Role, user: discord.Member):
+    await handle_addrole(ctx, role, user)
 
-            if (user.name, user.discriminator) == (member_name, member_discriminator):
-                await ctx.guild.unban(user)
-                print(f"Unbanned member: {user}")
-                break
+@bot.command()
+@commands.check_any(commands.is_owner(), commands.has_role("Bot Boi"))
+async def remove(ctx, user: discord.Member, role: discord.Role):
+    await handle_removerole(ctx, role, user)
 
-    # Looping Disconnect member
-    @ bot.command("disconnect", aliases=["dc"])
-    # @commands.is_owner()
-    @ commands.check_any(commands.is_owner(), commands.has_role("Bot Boi"))
-    async def disconnect(ctx, value=10, *members: discord.Member):
-        await ctx.channel.purge(limit=1)  # Clean the evidence.
+@bot.command()
+@commands.check_any(commands.is_owner(), commands.has_role("Bot Boi"))
+async def shutdown(ctx):
+    await handle_shutdown(ctx, bot)
 
-        for member in members:
-            print("log: ", member, " Iteration: ", value)
+async def setup():
+	await bot.add_cog(Music(bot))
 
-            if str(member.id) == "193219019292016641":
-                print(member, " tried to DC you.")
-                return
+# Run the bot
+if __name__ == "__main__":
+	import asyncio
 
-            for iteration in range(int(value)):
-                big_winner = random.randint(1, 3)
+	asyncio.run(setup())
+	bot.run(TOKEN)
 
-                time.sleep(big_winner)
-                await member.move_to(None)
-
-            print("Event over for", member, "\n")
-            # await ctx.send(f"iterations: {iteration}. Timer: {big_winner}")
-
-    @ bot.command()
-    @ commands.is_owner()
-    async def move(ctx, member: discord.Member, channel1: discord.VoiceChannel, channel2: discord.VoiceChannel, value=10):
-        # No Russians (CoD II Reference, not a racist)
-        await ctx.channel.purge(limit=1)
-
-        print("Moving Member:", member, "to channel:",
-              channel1, "and channel:", channel2)
-
-        for i in range(value):
-            channel = channel1 if i % 2 == 0 else channel2
-            await member.move_to(channel)
-            time.sleep(.4)
-
-        print("Event over for:", member, "\n")
-
-    # TODO
-    # Mute/Deafen alternate
-    # @bot.command(aliases=["m"])
-    # @commands.has_permissions(manage_messages=True)
-    # async def mute(ctx, member: discord.Member):
-    #     await ctx.channel.purge(limit=1)
-
-    #     muted_role = ctx.guild.get_role(962601359117516811)
-
-    #     await member.add_role(muted_role)
-
-    @ bot.command()
-    @ commands.check_any(commands.is_owner(), commands.has_role("Bot Boi"))
-    async def shutdown(ctx):
-
-        await ctx.send("Shutting Down")
-
-        time.sleep(2)
-        await ctx.channel.purge(limit=2)
-
-        await bot.close()
-
-    @ bot.command()
-    async def test(ctx, member: discord.Member):
-        await ctx.send(member.id)
-
-    bot.run("", bot=True)
-
-
-main()
